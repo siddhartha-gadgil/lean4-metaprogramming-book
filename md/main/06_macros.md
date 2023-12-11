@@ -1,4 +1,3 @@
-/-
 # Macros
 
 ## What is a macro
@@ -12,8 +11,8 @@ to the syntax for us before performing actual analysis of the input. This
 means that the only thing we have to do is declare our syntax with a specific
 name and bind a function of type `Lean.Macro` to it. Let's try to reproduce
 the `LXOR` notation from the `Syntax` chapter:
--/
 
+```lean
 import Lean
 
 open Lean
@@ -28,8 +27,8 @@ syntax:10 (name := lxor) term:10 " LXOR " term:11 : term
 #eval true LXOR false -- false
 #eval false LXOR true -- true
 #eval false LXOR false -- false
+```
 
-/-
 That was quite easy! The `Macro.throwUnsupported` function can be used by a macro
 to indicate that "it doesn't feel responsible for this syntax". In this case
 it's merely used to fill a wildcard pattern that should never be reached anyways.
@@ -39,8 +38,8 @@ if we desire, they will be tried one after another (the later registered ones ha
 higher priority)  -- is "higher" correct?
 until one throws either a real error using `Macro.throwError` or succeeds, that
 is it does not `Macro.throwUnsupported`. Let's see this in action:
--/
 
+```lean
 @[macro lxor] def lxorImpl2 : Macro
   -- special case that changes behaviour of the case where the left and
   -- right hand side are these specific identifiers
@@ -49,20 +48,20 @@ is it does not `Macro.throwUnsupported`. Let's see this in action:
 
 #eval true LXOR true -- true, handled by new macro
 #eval true LXOR false -- false, still handled by the old
+```
 
-/-
 This capability is obviously *very* powerful! It should not be used
 lightly and without careful thinking since it can introduce weird
 behaviour while writing code later on. The following example illustrates
 this weird behaviour:
--/
 
+```lean
 #eval true LXOR true -- true, handled by new macro
 
 def foo := true
 #eval foo LXOR foo -- false, handled by old macro, after all the identifiers have a different name
+```
 
-/-
 Without knowing exactly how this macro is implemented this behaviour
 will be very confusing to whoever might be debugging an issue based on this.
 The rule of thumb for when to use a macro vs. other mechanisms like
@@ -79,14 +78,14 @@ all of the ways about to be presented are implemented as macros themselves).
 
 First things first there is `macro_rules` which basically desugars to
 functions like the ones we wrote above, for example:
--/
 
+```lean
 syntax:10 term:10 " RXOR " term:11 : term
 
 macro_rules
   | `($l:term RXOR $r:term) => `($l && !$r)
+```
 
-/-
 As you can see, it figures out lot's of things on its own for us:
 - the name of the syntax declaration
 - the `macro` attribute registration
@@ -98,16 +97,16 @@ functions on the right hand side.
 
 If this is still not short enough for you, there is a next step using the
 `macro` macro:
--/
 
+```lean
 macro l:term:10 " ⊕ " r:term:11 : term => `((!$l && $r) || ($l && !$r))
 
 #eval true ⊕ true -- false
 #eval true ⊕ false -- true
 #eval false ⊕ true -- true
 #eval false ⊕ false -- false
+```
 
-/-
 As you can see, `macro` is quite close to `notation` already:
 - it performed syntax declaration for us
 - it automatically wrote a `macro_rules` style function to match on it
@@ -141,21 +140,23 @@ but is expected to have type
 ```
 If you are sure that your thing from the `a` syntax category can be
 used as a `b` here you can declare a coercion of the form:
--/
 
+```lean
 instance : Coe (TSyntax `a) (TSyntax `b) where
   coe s := ⟨s.raw⟩
+```
 
-/-!
 Which will allow Lean to perform the type cast automatically. If you
 notice that your `a` can not be used in place of the `b` here congrats,
 you just discovered a bug in your `Syntax` function. Similar to the Lean
-compiler you could can also declare functions that are specific to certain
-`TSynax` variants. For example as we have seen in the syntax chapter
+compiler, you could also declare functions that are specific to certain
+`TSyntax` variants. For example as we have seen in the syntax chapter
 there exists the function:
--/
+
+```lean
 #check TSyntax.getNat -- TSyntax.getNat : TSyntax numLitKind → Nat
-/-!
+```
+
 Which is guaranteed to not panic because we know that the `Syntax` that
 the function is receiving is a numeric literal and can thus naturally
 be converted to a `Nat`.
@@ -176,7 +177,7 @@ we've already seen in the syntax chapter and up to now in this chapter,
 next we'll discuss some more advanced anti-quotations.
 
 ### Advanced anti-quotations
-For convenince we can also use anti-quotations in a way similar to
+For convenience we can also use anti-quotations in a way similar to
 format strings: `` `($(mkIdent `c)) `` is the same as: `` let x := mkIdent `c; `($x) ``.
 
 Furthermore there are sometimes situations in which we are not working
@@ -195,8 +196,8 @@ a quotation we have two main ways to achieve this:
 2. Insert it point blank without a separator (TODO): `` `() ``
 
 For example:
--/
 
+```lean
 -- syntactically cut away the first element of a tuple if possible
 syntax "cut_tuple " "(" term ", " term,+ ")" : term 
 
@@ -207,46 +208,46 @@ macro_rules
 
 #check cut_tuple (1, 2) -- (1, 2) : Nat × Nat
 #check cut_tuple (1, 2, 3) -- (2, 3) : Nat × Nat
+```
 
-/-!
 The last thing for this section will be so called "anti-quotation splices".
 There are two kinds of anti quotation splices, first the so called optional
 ones. For example we might declare a syntax with an optional argument,
 say our own `let` (in real projects this would most likely be a `let`
 in some functional language we are writing a theory about):
--/
 
+```lean
 syntax "mylet " ident (" : " term)? " := " term " in " term : term
+```
 
-/-!
 There is this optional `(" : " term)?` argument involved which can let
 the user define the type of the term to the left of it. With the methods
 we know so far we'd have to write two `macro_rules` now, one for the case
 with, one for the case without the optional argument. However the rest
 of the syntactic translation works exactly the same with and without
 the optional argument so what we can do using a splice here is to essentially
-define both cases at once: 
--/
+define both cases at once:
 
+```lean
 macro_rules
   | `(mylet $x $[: $ty]? := $val in $body) => `(let $x $[: $ty]? := $val; $body)
+```
 
-/-!
 The `$[...]?` part is the splice here, it basically says "if this part of
 the syntax isn't there, just ignore the parts on the right hand side that
 involve anti quotation variables involved here". So now we can run
 this syntax both with and without type ascription:
--/
 
+```lean
 #eval mylet x := 5 in x - 10 -- 0, due to subtraction behaviour of `Nat`
 #eval mylet x : Int := 5 in x - 10 -- -5, after all it is an `Int` now
+```
 
-/-!
 The second and last splice might remind readers of list comprehension
 as seen for example in Python. We will demonstrate it using an implementation
 of `map` as a macro:
--/
 
+```lean
 -- run the function given at the end for each element of the list
 syntax "foreach " "[" term,* "]" term : term
 
@@ -254,25 +255,23 @@ macro_rules
   | `(foreach [ $[$x:term],* ] $func:term) => `(let f := $func; [ $[f $x],* ])
 
 #eval foreach [1,2,3,4] (Nat.add 2) -- [3, 4, 5, 6]
+```
 
-/-!
 In this case the `$[...],*` part is the splice. On the match side it tries
-to match the pattern we define inside of it repetetively (given the seperator
+to match the pattern we define inside of it repetitively (given the separator
 we tell it to). However unlike regular separator matching it does not
 give us an `Array` or `SepArray`, instead it allows us to write another
 splice on the right hand side that gets evaluated for each time the
 pattern we specified matched, with the specific values from the match
 per iteration.
--/
 
-/-!
 ## Hygiene issues and how to solve them
 If you are familiar with macro systems in other languages like C you
 probably know about so called macro hygiene issues already.
 A hygiene issue is when a macro introduces an identifier that collides with an
 identifier from some syntax that it is including. For example:
--/
 
+```lean
 -- Applying this macro produces a function that binds a new identifier `x`.
 macro "const" e:term : term => `(fun x => $e)
 
@@ -281,8 +280,8 @@ def x : Nat := 42
 
 -- Which `x` should be used by the compiler in place of `$e`?
 #eval (const x) 10 -- 42
+```
 
-/-
 Given the fact that macros perform only syntactic translations one might
 expect the above `eval` to return 10 instead of 42: after all, the resulting
 syntax should be `(fun x => x) 10`. While this was of course not the intention
@@ -327,7 +326,7 @@ will not allow name clashes like the one in the `const` example.
 Note that this extends to *all* names that are introduced using syntax
 quotations, that is if you write a macro that produces:
 `` `(def foo := 1) ``, the user will not be able to access `foo`
-because the name will subject to hygienie. Luckily there is a way to
+because the name will subject to hygiene. Luckily there is a way to
 circumvent this. You can use `mkIdent` to generate a raw identifier,
 for example: `` `(def $(mkIdent `foo) := 1) ``. In this case it won't
 be subject to hygiene and accessible to the user.
@@ -353,8 +352,8 @@ syntax in pure functions: there is no `Monad` implementing `MonadQuotation`
 involved in order to keep track of the macro scopes.
 
 Now let's take a brief look at the `MonadQuotation` type class:
--/
 
+```lean
 namespace Playground
 
 class MonadRef (m : Type → Type) where
@@ -367,8 +366,8 @@ class MonadQuotation (m : Type → Type) extends MonadRef m where
   withFreshMacroScope {α : Type} : m α → m α
 
 end Playground
+```
 
-/-
 Since `MonadQuotation` is based on `MonadRef`, let's take a look at `MonadRef`
 first. The idea here is quite simple: `MonadRef` is meant to be seen as an extension
 to the `Monad` typeclass which
@@ -400,8 +399,8 @@ the result of `getRef` to each introduced symbol, which then results in better
 error positions than not applying any position.
 
 To see error positioning in action, we can write a little macro that makes use of it:
--/
 
+```lean
 syntax "error_position" ident : term
 
 macro_rules
@@ -412,8 +411,8 @@ macro_rules
 
 #eval error_position all -- the error is indicated at `error_position all`
 #eval error_position first -- the error is only indicated at `error_position`
+```
 
-/-
 Obviously controlling the positions of errors in this way is quite important
 for a good user experience.
 
@@ -421,7 +420,8 @@ for a good user experience.
 As a final mini project for this section we will re-build the arithmetic
 DSL from the syntax chapter in a slightly more advanced way, using a macro
 this time so we can actually fully integrate it into the Lean syntax.
--/
+
+```lean
 declare_syntax_cat arith
 
 syntax num : arith
@@ -437,22 +437,22 @@ macro_rules
   | `([Arith| ($x:arith)]) => `([Arith| $x])
 
 #eval [Arith| (12 + 3) - 4] -- 11
+```
 
-/-! Again feel free to play around with it. If you want to build more complex
+Again feel free to play around with it. If you want to build more complex
 things, like expressions with variables, maybe consider building an inductive type
 using macros instead. Once you got your arithmetic expression term
 as an inductive, you could then write a function that takes some form of
 variable assignment and evaluates the given expression for this
 assignment. You could also try to embed arbitrary `term`s into your
 arith language using some special syntax or whatever else comes to your mind.
--/
 
-/-!
 ## More elaborate examples
 ### Binders 2.0
 As promised in the syntax chapter here is Binders 2.0. We'll start by
 reintroducing our theory of sets:
--/
+
+```lean
 def Set (α : Type u) := α → Prop
 def Set.mem (x : α) (X : Set α) : Prop := X x
 
@@ -464,31 +464,32 @@ def Set.empty : Set α := λ _ => False
 
 -- the basic "all elements such that" function for the notation
 def setOf {α : Type} (p : α → Prop) : Set α := p
+```
 
-/-!
 The goal for this section will be to allow for both `{x : X | p x}`
 and `{x ∈ X, p x}` notations. In principle there are two ways to do this:
 1. Define a syntax and macro for each way to bind a variable we might think of
-2. Define a syntax cateogry of binders that we could reuse across other
+2. Define a syntax category of binders that we could reuse across other
    binder constructs such as `Σ` or `Π` as well and implement macros for
    the `{ | }` case
 
 In this section we will use approach 2 because it is more easily reusable.
--/
 
+```lean
 declare_syntax_cat binder_construct
 syntax "{" binder_construct "|" term "}" : term
+```
 
-/-!
 Now let's define the two binders constructs we are interested in:
--/
+
+```lean
 syntax ident " : " term : binder_construct
 syntax ident " ∈ " term : binder_construct
+```
 
-/-!
 And finally the macros to expand our syntax:
--/
 
+```lean
 macro_rules
   | `({ $var:ident : $ty:term | $body:term }) => `(setOf (fun ($var : $ty) => $body))
   | `({ $var:ident ∈ $s:term | $body:term }) => `(setOf (fun $var => $var ∈ $s ∧ $body))
@@ -511,9 +512,8 @@ example : ∀ x, ¬(x ∈ { y ∈ oneSet | y ≠ 1 }) := by
   -- : x ∈ oneSet
   -- : x ≠ 1
   contradiction
+```
 
-
-/-!
 ## Reading further
 If you want to know more about macros you can read:
 - the API docs: TODO link
@@ -521,4 +521,3 @@ If you want to know more about macros you can read:
   as you can see they are declared quite early in Lean because of their importance
   to building up syntax
 - the aforementioned [Beyond Notations](https://lmcs.episciences.org/9362/pdf) paper
--/

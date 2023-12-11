@@ -2,13 +2,13 @@ import Lake
 open Lake DSL
 
 package «lean4-metaprogramming-book» {
-  srcDir := "lean"
-  isLeanOnly := true
+  srcDir := ⟨"lean"⟩
 }
 
-@[defaultTarget]
+@[default_target]
 lean_lib «lean4-metaprogramming-book» {
-  roots := #["cover"]
+  roots := #[`cover, `extra, `main, `solutions]
+  globs := #[Glob.one `cover, Glob.submodules `extra, Glob.submodules `main, Glob.submodules `solutions]
 }
 
 def runCmd (cmd : String) (args : Array String) : ScriptM Bool := do
@@ -24,9 +24,10 @@ def runCmd (cmd : String) (args : Array String) : ScriptM Bool := do
 script build do
   let _ ← runCmd "rm" #["-rf", "md"]
 
-  if ← runCmd "python" #["-m", "lean2md", "lean", "md"] then return 1
-  if ← runCmd "python" #["-m", "lean2md", "lean/main", "md/main"] then return 1
-  if ← runCmd "python" #["-m", "lean2md", "lean/extra", "md/extra"] then return 1
+  if ← runCmd "python3" #["-m", "lean2md", "lean", "md"] then return 1
+  if ← runCmd "python3" #["-m", "lean2md", "lean/main", "md/main"] then return 1
+  if ← runCmd "python3" #["-m", "lean2md", "lean/extra", "md/extra"] then return 1
+  if ← runCmd "python3" #["-m", "lean2md", "lean/solutions", "md/solutions"] then return 1
 
   return 0
 
@@ -36,5 +37,6 @@ script viper_build do
   if ← runCmd "viper" #["-m", "lean2md", "lean", "md"] then return 1
   if ← runCmd "viper" #["-m", "lean2md", "lean/main", "md/main"] then return 1
   if ← runCmd "viper" #["-m", "lean2md", "lean/extra", "md/extra"] then return 1
+  if ← runCmd "viper" #["-m", "lean2md", "lean/solutions", "md/solutions"] then return 1
 
   return 0

@@ -1,3 +1,4 @@
+/-
 # Elaboration
 
 The elaborator is the component in charge of turning the user facing
@@ -61,7 +62,7 @@ look at how the elaboration process actually works:
    the resulting `Syntax` is recursively elaborated as a command again.
 2. If no macro can be applied, we search for all `CommandElab`s that have been
    registered for the `SyntaxKind` of the `Syntax` we are elaborating,
-   using the `commandElabAttribute`.
+   using the `command_elab` attribute.
 3. All of these `CommandElab` are then tried in order until one of them does not throw an
    `unsupportedSyntaxException`, Lean's way of indicating that the elaborator
    "feels responsible"
@@ -77,63 +78,62 @@ Now that we know both what a `CommandElab` is and how they are used, we can
 start looking into writing our own. The steps for this, as we learned above, are:
 1. Declaring the syntax
 2. Declaring the elaborator
-3. Registering the elaborator as responsible for the syntax via `commandElabAttribute`
+3. Registering the elaborator as responsible for the syntax via the `command_elab`
+   attribute.
 
 Let's see how this is done:
+-/
 
-```lean
 import Lean
 
 open Lean Elab Command Term Meta
 
 syntax (name := mycommand1) "#mycommand1" : command -- declare the syntax
 
-@[commandElab mycommand1]
+@[command_elab mycommand1]
 def mycommand1Impl : CommandElab := fun stx => do -- declare and register the elaborator
   logInfo "Hello World"
 
 #mycommand1 -- Hello World
-```
 
+/-!
 You might think that this is a little boiler-platey and it turns out the Lean
 devs did as well so they added a macro for this!
-
-```lean
+-/
 elab "#mycommand2" : command =>
   logInfo "Hello World"
 
 #mycommand2 -- Hello World
-```
 
+/-!
 Note that, due to the fact that command elaboration supports multiple
 registered elaborators for the same syntax, we can in fact overload
 syntax, if we want to.
-
-```lean
-@[commandElab mycommand1]
+-/
+@[command_elab mycommand1]
 def myNewImpl : CommandElab := fun stx => do
   logInfo "new!"
 
 #mycommand1 -- new!
-```
 
+/-!
 Furthermore it is also possible to only overload parts of syntax by
 throwing an `unsupportedSyntaxException` in the cases we want the default
 handler to deal with it or just letting the `elab` command handle it.
+-/
 
+/-
 In the following example, we are not extending the original `#check` syntax,
 but adding a new `SyntaxKind` for this specific syntax construct.
 However, from the point of view of the user, the effect is basically the same.
-
-```lean
+-/
 elab "#check" "mycheck" : command => do
   logInfo "Got ya!"
-```
 
+/-
 This is actually extending the original `#check`
-
-```lean
-@[commandElab Lean.Parser.Command.check] def mySpecialCheck : CommandElab := fun stx => do
+-/
+@[command_elab Lean.Parser.Command.check] def mySpecialCheck : CommandElab := fun stx => do
   if let some str := stx[1].isStrLit? then
     logInfo s!"Specially elaborated string literal!: {str} : String"
   else
@@ -142,8 +142,8 @@ This is actually extending the original `#check`
 #check mycheck -- Got ya!
 #check "Hello" -- Specially elaborated string literal!: Hello : String
 #check Nat.add -- Nat.add : Nat → Nat → Nat
-```
 
+/-!
 ### Mini project
 As a final mini project for this section let's build a command elaborator
 that is actually useful. It will take a command and use the same mechanisms
@@ -151,8 +151,7 @@ as `elabCommand` (the entry point for command elaboration) to tell us
 which macros or elaborators are relevant to the command we gave it.
 
 We will not go through the effort of actually reimplementing `elabCommand` though
-
-```lean
+-/
 elab "#findCElab " c:command : command => do
   let macroRes ← liftMacroM <| expandMacroImpl? (←getEnv) c
   match macroRes with
@@ -170,14 +169,16 @@ elab "#findCElab " c:command : command => do
 #findCElab open Hi -- Your syntax may be elaborated by: [Lean.Elab.Command.elabOpen]
 #findCElab namespace Foo -- Your syntax may be elaborated by: [Lean.Elab.Command.elabNamespace]
 #findCElab #findCElab open Bar -- even itself!: Your syntax may be elaborated by: [«_aux_lean_elaboration___elabRules_command#findCElab__1»]
-```
 
+/-!
 TODO: Maybe we should also add a mini project that demonstrates a
 non # style command aka a declaration, although nothing comes to mind right now.
 TODO:  Define a `conjecture` declaration, similar to `lemma/theorem`, except that 
 it is automatically sorried.  The `sorry` could be a custom one, to reflect that
 the "conjecture" might be expected to be true.
+-/
 
+/-!
 ## Term elaboration
 A term is a `Syntax` object that represents some sort of `Expr`.
 Term elaborators are the ones that do the work for most of the code we write.
@@ -213,7 +214,7 @@ The second one is very specific to the term elaboration loop.
 ### Term elaboration
 The basic idea of term elaboration is the same as command elaboration:
 expand macros and recurse or run term elaborators that have been registered
-for the `Syntax` via the `termElabAttribute` (they might in turn run term elaboration)
+for the `Syntax` via the `term_elab` attribute (they might in turn run term elaboration)
 until we are done. There is, however, one special action that a term elaborator
 can do during its execution.
 
@@ -233,11 +234,10 @@ Once such a synthetic metavariable is created, the next higher level term elabor
 At some point, execution of postponed metavariables will be resumed by the term elaborator,
 in hopes that it can now complete its execution. We can try to see this in
 action with the following example:
-
-```lean
+-/
 #check set_option trace.Elab.postpone true in List.foldr .add 0 [1,2,3] -- [Elab.postpone] .add : ?m.5695 → ?m.5696 → ?m.5696
-```
 
+/-!
 What happened here is that the elaborator for function applications started
 at `List.foldr` which is a generic function so it created metavariables
 for the implicit type parameters. Then, it attempted to elaborate the first argument `.add`.
@@ -258,45 +258,45 @@ in place of `.add`), the elaboration of the other two arguments then yields the 
 this information to complete elaboration.
 
 We can also easily provoke cases where this does not work out. For example:
+-/
 
-```lean
 #check set_option trace.Elab.postpone true in List.foldr .add
 -- [Elab.postpone] .add : ?m.5808 → ?m.5809 → ?m.5809
 -- invalid dotted identifier notation, expected type is not of the form (... → C ...) where C is a constant
   -- ?m.5808 → ?m.5809 → ?m.5809
-```
 
+/-!
 In this case `.add` first postponed its execution, then got called again
 but didn't have enough information to finish elaboration and thus failed.
 
 ### Making our own
 Adding new term elaborators works basically the same way as adding new
 command elaborators so we'll only take a very brief look:
+-/
 
-```lean
 syntax (name := myterm1) "myterm 1" : term
 
 def mytermValues := [1, 2]
 
-@[termElab myterm1]
+@[term_elab myterm1]
 def myTerm1Impl : TermElab := fun stx type? =>
-  mkAppM ``List.get! #[mkConst ``mytermValues, mkNatLit 0] -- `MetaM` code
+  mkAppM ``List.get! #[.const ``mytermValues [], mkNatLit 0] -- `MetaM` code
 
 #eval myterm 1 -- 1
 
 -- Also works with `elab`
 elab "myterm 2" : term => do
-  mkAppM ``List.get! #[mkConst ``mytermValues, mkNatLit 1] -- `MetaM` code
+  mkAppM ``List.get! #[.const ``mytermValues [], mkNatLit 1] -- `MetaM` code
 
 #eval myterm 2 -- 2
-```
 
+/-!
 ### Mini project
 As a final mini project for this chapter we will recreate one of the most
 commonly used Lean syntax sugars, the `⟨a,b,c⟩` notation as a short hand
 for single constructor types:
+-/
 
-```lean
 -- slightly different notation so no ambiguity happens
 syntax (name := myanon) "⟨⟨" term,* "⟩⟩" : term
 
@@ -307,7 +307,7 @@ def getCtors (typ : Name) : MetaM (List Name) := do
     pure val.ctors
   | _ => pure []
 
-@[termElab myanon]
+@[term_elab myanon]
 def myanonImpl : TermElab := fun stx typ? => do
   -- Attempt to postpone execution if the type is not known or is a metavariable.
   -- Metavariables are used by things like the function elaborator to fill
@@ -331,13 +331,69 @@ def myanonImpl : TermElab := fun stx typ? => do
 #check ⟨⟨1, sorry⟩⟩ -- expected type must be known
 #check (⟨⟨0⟩⟩ : Nat) -- type doesn't have exactly one constructor
 #check (⟨⟨⟩⟩ : Nat → Nat) -- type is not of the expected form: Nat -> Nat
-```
 
+/-!
 As a final note, we can shorten the postponing act by using an additional
 syntax sugar of the `elab` syntax instead:
+-/
 
-```lean
 -- This `t` syntax will effectively perform the first two lines of `myanonImpl`
 elab "⟨⟨" args:term,* "⟩⟩" : term <= t => do 
   sorry
-```
+
+
+/-!
+
+## Exercises
+
+1. Consider the following code. Rewrite `syntax` + `@[term_elab hi]... : TermElab` combination using just `elab`.
+
+    ```lean
+    syntax (name := hi) term " ♥ " " ♥ "? " ♥ "? : term
+
+    @[term_elab hi]
+    def heartElab : TermElab := fun stx tp =>
+      match stx with
+        | `($l:term ♥) => do
+          let nExpr ← elabTermEnsuringType l (mkConst `Nat)
+          return Expr.app (Expr.app (Expr.const `Nat.add []) nExpr) (mkNatLit 1)
+        | `($l:term ♥♥) => do
+          let nExpr ← elabTermEnsuringType l (mkConst `Nat)
+          return Expr.app (Expr.app (Expr.const `Nat.add []) nExpr) (mkNatLit 2)
+        | `($l:term ♥♥♥) => do
+          let nExpr ← elabTermEnsuringType l (mkConst `Nat)
+          return Expr.app (Expr.app (Expr.const `Nat.add []) nExpr) (mkNatLit 3)
+        | _ =>
+          throwUnsupportedSyntax
+    ```
+
+2. Here is some syntax taken from a real mathlib command `alias`.
+
+    ```
+    syntax (name := our_alias) (docComment)? "our_alias " ident " ← " ident* : command
+    ```
+
+    We want `alias hi ← hello yes` to print out the identifiers after `←` - that is, "hello" and "yes".
+
+    Please add these semantics:
+
+    **a)** using `syntax` + `@[command_elab alias] def elabOurAlias : CommandElab`.  
+    **b)** using `syntax` + `elab_rules`.  
+    **c)** using `elab`.
+
+3. Here is some syntax taken from a real mathlib tactic `nth_rewrite`.
+
+    ```lean
+    open Parser.Tactic
+    syntax (name := nthRewriteSeq) "nth_rewrite " (config)? num rwRuleSeq (ppSpace location)? : tactic
+    ```
+
+    We want `nth_rewrite 5 [←add_zero a] at h` to print out `"rewrite location!"` if the user provided location, and `"rewrite target!"` if the user didn't provide location.
+
+    Please add these semantics:
+
+    **a)** using `syntax` + `@[tactic nthRewrite] def elabNthRewrite : Lean.Elab.Tactic.Tactic`.  
+    **b)** using `syntax` + `elab_rules`.  
+    **c)** using `elab`.
+
+-/
